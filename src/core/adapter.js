@@ -32,8 +32,8 @@ class Adapter {
 
     this.inputInterface = options.inputInterface;
     this.outputInterface = options.outputInterface;
-    this.adaptRequest = options.adaptRequest;
-    this.adaptResult = options.adaptResult;
+    this._adaptRequest = options.adaptRequest;
+    this._adaptResult = options.adaptResult;
     this.metadata = options.metadata !== undefined ? options.metadata : null;
   }
 
@@ -59,7 +59,7 @@ class Adapter {
    * @returns {Request} A request for the output interface
    */
   adaptRequest(request) {
-    return this.adaptRequest(request);
+    return this._adaptRequest(request);
   }
 
   /**
@@ -68,7 +68,7 @@ class Adapter {
    * @returns {Result} A result for the input interface
    */
   adaptResult(result) {
-    return this.adaptResult(result);
+    return this._adaptResult(result);
   }
 }
 

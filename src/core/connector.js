@@ -16,12 +16,14 @@ const { CLASSIFICATIONS } = require('./classifications');
  * @param {Object[]} options.plugins - Array of Plugin instances
  * @param {Object[]} options.adapters - Array of Adapter instances
  * @param {Object[]} options.subConnectors - Array of SubConnector instances
+ * @param {Object|null} options.connectorResolver - External generic connector resolver
  */
 class StandardConnector {
   constructor(options = {}) {
     this.plugins = Array.isArray(options.plugins) ? options.plugins.slice() : [];
     this.adapters = Array.isArray(options.adapters) ? options.adapters.slice() : [];
     this.subConnectors = Array.isArray(options.subConnectors) ? options.subConnectors.slice() : [];
+    this.connectorResolver = options.connectorResolver || null;
     this.lifecycle = new LifecycleManager(`standard-connector-${Math.random().toString(36).substr(2, 9)}`);
     // Policy hooks - to be implemented
     this.hooks = {
@@ -136,7 +138,9 @@ class StandardConnector {
         this.adapters,
         this.subConnectors,
         this.plugins,
-        providerInterface
+        providerInterface,
+        new ResolutionContext(),
+        this.connectorResolver
       );
       await this._executeHooks('beforeResolution', { request, providerInterface, classification, resolution });
 
@@ -410,7 +414,7 @@ class StandardConnector {
               break;
 
             case 'CONNECTOR':
-              adaptedTargetInterface = resolution.plugin.interface;
+              adaptedTargetInterface = resolution.adaptedTargetInterface;
               break;
           }
 

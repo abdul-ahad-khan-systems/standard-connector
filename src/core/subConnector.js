@@ -33,8 +33,8 @@ class SubConnector {
 
     this.inputInterface = options.inputInterface;
     this.outputInterface = options.outputInterface;
-    this.connect = options.connect;
-    this.dispose = options.dispose;
+    this._connect = options.connect;
+    this._dispose = options.dispose;
     this.metadata = options.metadata !== undefined ? options.metadata : null;
   }
 
@@ -60,7 +60,7 @@ class SubConnector {
    * @returns {*} A connection object (opaque to Core)
    */
   connect(connectionParameters) {
-    return this.connect(connectionParameters);
+    return this._connect(connectionParameters);
   }
 
   /**
@@ -68,7 +68,7 @@ class SubConnector {
    * @param {*} connection - The connection to dispose
    */
   dispose(connection) {
-    return this.dispose(connection);
+    return this._dispose(connection);
   }
 }
 

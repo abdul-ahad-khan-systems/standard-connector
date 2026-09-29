@@ -50,7 +50,8 @@ function resolve(
   subConnectors,
   plugins,
   providerInterface,
-  context = new ResolutionContext()
+  context = new ResolutionContext(),
+  connectorResolver = null
 ) {
   if (!request || !request.targetInterface || typeof request.targetInterface.toKey !== 'function') {
     throw new Error('resolve requires a valid request with targetInterface');
@@ -67,7 +68,8 @@ function resolve(
   const options = {
     adapters: safeAdapters.length,
     subConnectors: safeSubConnectors.length,
-    plugins: safePlugins.length
+    plugins: safePlugins.length,
+    connectorResolver: connectorResolver ? 1 : 0
   };
 
   function directResolution(target, provider) {
@@ -120,19 +122,38 @@ function resolve(
       }
     }
 
-    // Plugins expose an interface rather than an input/output pair.
-    // They can terminate resolution when their interface is compatible
-    // with the interface currently available.
-    for (const plugin of safePlugins) {
+    // Generic connector resolution is external to Core.
+    // It is intentionally not represented as a Plugin candidate.
+    if (
+      connectorResolver &&
+      typeof connectorResolver.resolve === 'function'
+    ) {
+      let resolved;
+
+      try {
+        resolved = connectorResolver.resolve(currentInterface);
+      } catch (err) {
+        const failure = new Error(
+          err && err.message
+            ? `Connector resolution failed: ${err.message}`
+            : 'Connector resolution failed'
+        );
+        failure.code = 'CONNECTOR_RESOLUTION_FAILURE';
+        failure.category = 'RESOLUTION';
+        failure.cause = err;
+        throw failure;
+      }
+
       if (
-        plugin &&
-        plugin.interface &&
-        currentInterface.isCompatibleWith(plugin.interface)
+        resolved &&
+        resolved.interface &&
+        typeof resolved.interface.toKey === 'function' &&
+        resolved.connector !== undefined
       ) {
         candidates.push({
           type: 'CONNECTOR',
-          object: plugin,
-          nextInterface: plugin.interface
+          object: resolved.connector,
+          nextInterface: resolved.interface
         });
       }
     }
@@ -175,7 +196,7 @@ function resolve(
 
     return {
       type: 'CONNECTOR',
-      plugin: candidate.object,
+      connector: candidate.object,
       adaptedTargetInterface: candidate.nextInterface,
       providerInterface: provider
     };
