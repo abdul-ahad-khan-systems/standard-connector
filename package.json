@@ -1,0 +1,19 @@
+{
+  "name": "standard-connector",
+  "version": "1.0.0",
+  "description": "Standard Connector V1 - A reusable, host-agnostic connector framework",
+  "main": "src/core/connector.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "node tests/runTests.js"
+  },
+  "keywords": [
+    "connector",
+    "standard",
+    "v1"
+  ],
+  "author": "",
+  "license": "ISC"
+}
