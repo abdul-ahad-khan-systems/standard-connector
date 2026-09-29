@@ -61,7 +61,25 @@ class Plugin {
     this.operations = [...options.operations]; // copy
     this.interface = options.interface;
     this.lifecycle = options.lifecycle;
+    this.execute = typeof options.execute === 'function' ? options.execute : null;
     this.metadata = options.metadata !== undefined ? options.metadata : null;
+  }
+
+  /**
+   * Execute an operation supplied by this plugin.
+   *
+   * The Core owns dispatch; the plugin owns provider behavior.
+   *
+   * @param {Request} request - Normalized request
+   * @param {Object} [context] - Opaque execution context
+   * @returns {Promise<Result>|Result} Provider result
+   */
+  async executeRequest(request, context = {}) {
+    if (typeof this.execute !== 'function') {
+      throw new Error(`Plugin '${this.identity}' does not provide an executor`);
+    }
+
+    return this.execute(request, context);
   }
 
   /**

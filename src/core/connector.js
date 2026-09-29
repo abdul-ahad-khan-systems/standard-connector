@@ -358,7 +358,7 @@ class StandardConnector {
                       : resolution.steps[i + 1].type === 'SUB_CONNECTOR'
                         ? resolution.steps[i + 1].subConnector.inputInterface
                         : resolution.steps[i + 1].type === 'CONNECTOR'
-                          ? resolution.steps[i + 1].plugin.interface
+                          ? resolution.steps[i + 1].adaptedTargetInterface
                           : providerInterface
                   )
                 : providerInterface;
@@ -454,24 +454,137 @@ class StandardConnector {
         }
       }
 
-      // Step 5: CONNECT OR REJECT
-      // If we have a resolution and recheck passed, we attempt to connect.
-      // For simplicity, we'll assume the connection is already established (for sub-connector)
-      // or that the plugin/adapter will handle the actual request execution.
-      // We'll simulate a successful operation.
-      await this._executeHooks('onConnect', { request, providerInterface, classification, resolution, adaptedRequest, connection });
+      // Step 5: CONNECT + DISPATCH
+      // Core owns gateway/dispatch; the resolved Plugin owns provider behavior.
+      const providerPlugin = this.plugins.find(plugin => (
+        plugin &&
+        plugin.interface &&
+        typeof plugin.interface.toKey === 'function' &&
+        plugin.interface.toKey() === providerInterface.toKey()
+      ));
 
-      // In a real implementation, we would now execute the operation via the appropriate means
-      // and return the result. For now, we'll return a successful result.
-      return new Result({
-        status: 'OK',
-        payload: { message: 'Operation successful (simulated)' },
-        metadata: {
-          connectorVersion: '1.0.0',
+      if (!providerPlugin) {
+        await this._executeHooks('onReject', {
+          request,
+          providerInterface,
           classification,
-          resolutionType: resolution ? resolution.type : null
-        }
+          resolution
+        });
+
+        return new Result({
+          status: 'ERROR',
+          payload: null,
+          metadata: {
+            error: new StandardError({
+              code: 'PROVIDER_NOT_FOUND',
+              category: 'RESOLUTION',
+              message: 'No registered provider matches the resolved provider interface',
+              recoverable: false
+            })
+          }
+        });
+      }
+
+      const operations = providerPlugin.getOperations();
+      const supportsOperation = operations.some(operation => (
+        operation &&
+        (
+          operation === adaptedRequest.operation ||
+          operation.name === adaptedRequest.operation
+        )
+      ));
+
+      if (!supportsOperation) {
+        await this._executeHooks('onReject', {
+          request,
+          providerInterface,
+          classification,
+          resolution
+        });
+
+        return new Result({
+          status: 'ERROR',
+          payload: null,
+          metadata: {
+            error: new StandardError({
+              code: 'OPERATION_UNSUPPORTED',
+              category: 'VALIDATION',
+              message: `Provider does not support operation: ${adaptedRequest.operation}`,
+              recoverable: false
+            })
+          }
+        });
+      }
+
+      let providerResult;
+
+      try {
+        providerResult = await providerPlugin.executeRequest(adaptedRequest, {
+          connection,
+          providerInterface,
+          classification,
+          resolution
+        });
+      } catch (err) {
+        await this._executeHooks('onReject', {
+          request,
+          providerInterface,
+          classification,
+          resolution
+        });
+
+        return new Result({
+          status: 'ERROR',
+          payload: null,
+          metadata: {
+            error: new StandardError({
+              code: 'PROVIDER_EXECUTION_FAILURE',
+              category: 'UNEXPECTED',
+              message:
+                err && typeof err.message === 'string' && err.message
+                  ? err.message
+                  : 'Provider execution failed',
+              cause: err,
+              recoverable: false
+            })
+          }
+        });
+      }
+
+      if (!(providerResult instanceof Result)) {
+        return new Result({
+          status: 'ERROR',
+          payload: null,
+          metadata: {
+            error: new StandardError({
+              code: 'PROVIDER_INVALID_RESULT',
+              category: 'VALIDATION',
+              message: 'Provider execution must return a Result',
+              recoverable: false
+            })
+          }
+        });
+      }
+
+      const connectorMetadata = {
+        ...providerResult.metadata,
+        classification,
+        resolutionType: resolution ? resolution.type : null
+      };
+
+      providerResult.metadata = connectorMetadata;
+
+      await this._executeHooks('onConnect', {
+        request,
+        providerInterface,
+        classification,
+        resolution,
+        adaptedRequest,
+        connection,
+        result: providerResult
       });
+
+      return providerResult;
     } catch (err) {
       // Handle any unexpected errors
       if (err instanceof StandardError) {
@@ -488,7 +601,10 @@ class StandardConnector {
           error: new StandardError({
             code: 'INTERNAL_ERROR',
             category: 'UNEXPECTED',
-            message: err.message || 'Unknown error',
+            message:
+              err && typeof err.message === 'string' && err.message
+                ? err.message
+                : 'Unknown error',
             cause: err,
             recoverable: false
           })

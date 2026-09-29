@@ -4,6 +4,8 @@ const StandardConnector = require('../../src/core/connector');
 const InterfaceDescriptor = require('../../src/core/interfaceDescriptor');
 const Request = require('../../src/core/request');
 const Adapter = require('../../src/core/adapter');
+const Plugin = require('../../src/core/plugin');
+const Result = require('../../src/core/result');
 
 function descriptor(protocol, version, capabilities = [], operations = []) {
   return new InterfaceDescriptor({
@@ -62,6 +64,45 @@ function requestFor(targetInterface) {
     'ACTIVE'
   );
 
+  // Real executable provider.
+  const providerPlugin = new Plugin({
+    identity: 'flow-provider',
+    version: { major: 1, minor: 0, patch: 0 },
+    capabilities: ['read'],
+    operations: [{ name: 'read' }],
+    interface: provider,
+    lifecycle: {
+      register() {},
+      initialize() {},
+      start() {},
+      stop() {},
+      unload() {}
+    },
+    execute(request) {
+      return new Result({
+        status: 'OK',
+        payload: {
+          source: 'flow-provider',
+          operation: request.operation,
+          parameters: request.parameters
+        },
+        metadata: {
+          executed: true
+        }
+      });
+    }
+  });
+
+  connector.registerPlugin(providerPlugin);
+
+  const executableLifecycle = {
+    register() {},
+    initialize() {},
+    start() {},
+    stop() {},
+    unload() {}
+  };
+
   const direct = await connector.handleRequest(
     requestFor(target),
     provider
@@ -87,6 +128,30 @@ function requestFor(targetInterface) {
     'adapter.flow',
     { major: 1, minor: 1, patch: 0 }
   );
+
+  const adapterProviderPlugin = new Plugin({
+    identity: 'adapter-provider',
+    version: { major: 1, minor: 0, patch: 0 },
+    capabilities: ['read'],
+    operations: [{ name: 'read' }],
+    interface: adapterProvider,
+    lifecycle: executableLifecycle,
+    execute(request) {
+      return new Result({
+        status: 'OK',
+        payload: {
+          source: 'adapter-provider',
+          operation: request.operation,
+          parameters: request.parameters
+        },
+        metadata: {
+          executed: true
+        }
+      });
+    }
+  });
+
+  connector.registerPlugin(adapterProviderPlugin);
 
   let adaptationCalls = 0;
 
@@ -181,6 +246,30 @@ function requestFor(targetInterface) {
   connector.registerAdapter(firstChainAdapter);
   connector.registerAdapter(secondChainAdapter);
 
+  const chainProviderPlugin = new Plugin({
+    identity: 'chain-provider',
+    version: { major: 1, minor: 0, patch: 0 },
+    capabilities: ['read'],
+    operations: [{ name: 'read' }],
+    interface: chainProvider,
+    lifecycle: executableLifecycle,
+    execute(request) {
+      return new Result({
+        status: 'OK',
+        payload: {
+          source: 'chain-provider',
+          operation: request.operation,
+          parameters: request.parameters
+        },
+        metadata: {
+          executed: true
+        }
+      });
+    }
+  });
+
+  connector.registerPlugin(chainProviderPlugin);
+
   const chained = await connector.handleRequest(
     requestFor(chainTarget),
     chainProvider
@@ -223,6 +312,26 @@ function requestFor(targetInterface) {
     rejected.metadata.error.category,
     'RESOLUTION'
   );
+
+    // Unexpected non-Error throws must still be normalized by the request boundary.
+    const unexpectedConnector = new StandardConnector();
+
+    unexpectedConnector.registerHook('beforeRequest', () => {
+      throw null;
+    });
+
+  unexpectedConnector.start();
+
+  const unexpected = await unexpectedConnector.handleRequest(
+    requestFor(target),
+    provider
+  );
+
+  assert.strictEqual(unexpected.status, 'ERROR');
+  assert.strictEqual(unexpected.metadata.error.code, 'INTERNAL_ERROR');
+  assert.strictEqual(unexpected.metadata.error.category, 'UNEXPECTED');
+  assert.strictEqual(unexpected.metadata.error.recoverable, false);
+  assert.strictEqual(unexpected.metadata.error.message, 'Unknown error');
 
   connector.stop();
 

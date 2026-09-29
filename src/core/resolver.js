@@ -3,6 +3,7 @@
 
 const { CLASSIFICATIONS } = require('./classifications');
 const { classify } = require('./classifier');
+const { StandardError } = require('./error');
 
 class ResolutionContext {
   constructor(maxDepth = 10) {
@@ -133,15 +134,15 @@ function resolve(
       try {
         resolved = connectorResolver.resolve(currentInterface);
       } catch (err) {
-        const failure = new Error(
-          err && err.message
+        throw new StandardError({
+          code: 'CONNECTOR_RESOLUTION_FAILURE',
+          category: 'RESOLUTION',
+          message: err && err.message
             ? `Connector resolution failed: ${err.message}`
-            : 'Connector resolution failed'
-        );
-        failure.code = 'CONNECTOR_RESOLUTION_FAILURE';
-        failure.category = 'RESOLUTION';
-        failure.cause = err;
-        throw failure;
+            : 'Connector resolution failed',
+          cause: err,
+          recoverable: false
+        });
       }
 
       if (

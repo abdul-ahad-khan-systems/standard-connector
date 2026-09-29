@@ -77,4 +77,47 @@ assert.strictEqual(
   'malformed candidates must not resolve'
 );
 
+
+// Connector resolver failures are surfaced as normalized resolution errors.
+const resolverFailure = {
+  resolve() {
+    throw new Error('resolver backend unavailable');
+  }
+};
+
+const Request = require('../../src/core/request');
+const { resolve } = require('../../src/core/resolver');
+
+const failureTarget = descriptor('resolver.failure.target', 1, 0);
+const failureProvider = descriptor('resolver.failure.provider', 1, 0);
+
+const failureRequest = new Request({
+  targetInterface: failureTarget,
+  operation: 'test',
+  parameters: {}
+});
+
+assert.throws(
+  () => resolve(
+    failureRequest,
+    [],
+    [],
+    [],
+    failureProvider,
+    undefined,
+    resolverFailure
+  ),
+  err => (
+    err &&
+    err.code === 'CONNECTOR_RESOLUTION_FAILURE' &&
+    err.category === 'RESOLUTION' &&
+    err.recoverable === false &&
+    err.cause instanceof Error &&
+    err.cause.message === 'resolver backend unavailable'
+  ),
+  'connector-resolution failures must use the normalized RESOLUTION error contract'
+);
+
+console.log('PASS: connector-resolution failure normalization contract');
+
 console.log('PASS: V1 connector resolver integrity');
