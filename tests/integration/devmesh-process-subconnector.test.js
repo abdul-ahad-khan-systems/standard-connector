@@ -55,6 +55,19 @@ const {
     assert.match(responses[0].result.output, /README\.md/);
     assert.match(responses[1].result.output, /integrations/);
     assert.match(responses[2].result.output, /integration/);
+         const denied = await connection.execute({
+      id: 'integration-denied-001',
+      role: 'IMPLEMENTER',
+      name: 'not_a_real_tool',
+      arguments: {}
+    });
+
+    assert.equal(denied.requestId, 'integration-denied-001');
+    assert.equal(denied.gate.allowed, false);
+    assert.equal(denied.result.success, false);
+    assert.match(denied.gate.reason, /Unknown or unsupported tool/);
+
+    console.log('PASS: ToolGate denial through live SC → DevMesh process');
     const pendingRequest = connection.execute({
       id: 'integration-dispose-001',
       role: 'IMPLEMENTER',
