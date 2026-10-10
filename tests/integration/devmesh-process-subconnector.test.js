@@ -9,25 +9,75 @@ const {
     devmeshPath: '/home/kali/Projects/devmesh-v0.1'
   });
 
-  const connection = await connector.connect();
+  let connection;
 
-  const response = await connection.execute({
-    id: 'integration-001',
-    role: 'IMPLEMENTER',
-    name: 'list_files',
-    arguments: { path: '.' }
-  });
+  try {
+    connection = await connector.connect();
 
-  assert.equal(response.gate.allowed, true);
-  assert.equal(response.result.success, true);
-  assert.equal(response.result.name, 'list_files');
-  assert.match(response.result.output, /README\.md/);
-  assert.match(response.result.output, /src/);
+    const requests = [
+      {
+        id: 'integration-list-001',
+        role: 'IMPLEMENTER',
+        name: 'list_files',
+        arguments: { path: '.' }
+      },
+      {
+        id: 'integration-list-002',
+        role: 'IMPLEMENTER',
+        name: 'list_files',
+        arguments: { path: 'src' }
+      },
+      {
+        id: 'integration-list-003',
+        role: 'IMPLEMENTER',
+        name: 'list_files',
+        arguments: { path: 'tests' }
+      }
+    ];
 
-  await connector.dispose(connection);
+    const responses = await Promise.all(
+      requests.map((request) => connection.execute(request))
+    );
 
-  console.log('PASS: Real SC → DevMesh process integration');
+    assert.equal(responses.length, requests.length);
+
+    for (let i = 0; i < requests.length; i++) {
+      assert.equal(
+        responses[i].requestId,
+        requests[i].id,
+        `Response ${i} must match its request ID`
+      );
+      assert.equal(responses[i].gate.allowed, true);
+      assert.equal(responses[i].result.success, true);
+      assert.equal(responses[i].result.name, 'list_files');
+    }
+
+    assert.match(responses[0].result.output, /README\.md/);
+    assert.match(responses[1].result.output, /integrations/);
+    assert.match(responses[2].result.output, /integration/);
+    const pendingRequest = connection.execute({
+      id: 'integration-dispose-001',
+      role: 'IMPLEMENTER',
+      name: 'list_files',
+      arguments: { path: '.' }
+    });
+
+    await connector.dispose(connection);
+    connection = null;
+
+    await assert.rejects(
+      pendingRequest,
+      /DevMesh connector disposed/
+    );
+
+    console.log('PASS: Pending request rejected on disposal');
+    console.log('PASS: Concurrent SC → DevMesh request correlation');
+  } finally {
+    if (connection) {
+      await connector.dispose(connection);
+    }
+  }
 })().catch((error) => {
   console.error(error);
-  process.exit(1);
+  process.exitCode = 1;
 });
